@@ -1,5 +1,9 @@
 use std::{
-    env::current_dir, fs::read_dir, io::Result, path::Path, process::Command,
+    env::current_dir,
+    fs::{exists, read_dir},
+    io::Result,
+    path::{Path, PathBuf},
+    process::Command,
     thread::available_parallelism,
 };
 
@@ -33,37 +37,29 @@ impl BuildProgram {
         }
     }
 
-    fn build_make_command<P: AsRef<Path>>(threads: usize, directory: Option<P>) -> Command {
+    fn build_make_command<P: AsRef<Path>>(threads: usize, directory: P) -> Command {
         let mut command = Command::new("make");
         command.arg("-j").arg(threads.to_string());
-        if let Some(dir) = directory {
-            command.arg("-C").arg(dir.as_ref().as_os_str());
-        }
+        command.arg("-C").arg(directory.as_ref().as_os_str());
         command
     }
 
-    fn build_ninja_command<P: AsRef<Path>>(threads: usize, directory: Option<P>) -> Command {
+    fn build_ninja_command<P: AsRef<Path>>(threads: usize, directory: P) -> Command {
         let mut command = Command::new("ninja");
         command.arg("-j").arg(threads.to_string());
-        if let Some(dir) = directory {
-            command.arg("-C").arg(dir.as_ref().as_os_str());
-        }
+        command.arg("-C").arg(directory.as_ref().as_os_str());
         command
     }
 
-    fn build_cmake_command<P: AsRef<Path>>(threads: usize, directory: Option<P>) -> Command {
+    fn build_cmake_command<P: AsRef<Path>>(threads: usize, directory: P) -> Command {
         let mut command = Command::new("cmake");
         command.arg("-C");
-        if let Some(dir) = directory {
-            command.arg(dir.as_ref().as_os_str());
-        } else {
-            command.arg(".");
-        }
+        command.arg(directory.as_ref().as_os_str());
         command.arg("-j").arg(threads.to_string());
         command
     }
 
-    fn run<P: AsRef<Path>>(self, threads: usize, directory: Option<P>) {
+    fn run<P: AsRef<Path>>(self, threads: usize, directory: P) {
         let command = match self {
             BuildProgram::Make => BuildProgram::build_make_command(threads, directory),
             BuildProgram::Ninja => BuildProgram::build_ninja_command(threads, directory),
@@ -86,6 +82,26 @@ fn get_build_system<P: AsRef<Path>>(path: P) -> Result<Option<BuildProgram>> {
     Ok(None)
 }
 
+fn find_build_dir() -> Option<(BuildProgram, PathBuf)> {
+    let mut cwd = current_dir().unwrap();
+    if let Some(program) = get_build_system(&cwd).unwrap() {
+        return Some((program, cwd));
+    }
+    let mut build_dir = cwd.clone();
+    build_dir.push("build");
+    if exists(&build_dir).unwrap() {
+        if let Some(program) = get_build_system(&build_dir).unwrap() {
+            return Some((program, build_dir));
+        }
+    }
+    while cwd.pop() {
+        if let Some(program) = get_build_system(&cwd).unwrap() {
+            return Some((program, cwd));
+        }
+    }
+    None
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -93,10 +109,8 @@ fn main() {
         .threads
         .unwrap_or(available_parallelism().unwrap().get());
 
-    let cwd = current_dir().unwrap();
-    let build_system_maybe = get_build_system(cwd).unwrap();
-    if let Some(build_system) = build_system_maybe {
-        build_system.run::<&str>(threads, None);
+    if let Some((build_program, path)) = find_build_dir() {
+        build_program.run(threads, path);
     } else {
         println!("No build system found");
     }
