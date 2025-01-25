@@ -1,4 +1,18 @@
-use std::{env::current_dir, fs::read_dir, io::Result, path::Path, process::Command};
+use std::{
+    env::current_dir, fs::read_dir, io::Result, path::Path, process::Command,
+    thread::available_parallelism,
+};
+
+use clap::Parser;
+
+// A program to build your project with the build system that you use
+#[derive(Parser)]
+#[command(version, about)]
+struct Args {
+    // The number of threads
+    #[arg(short, long)]
+    threads: Option<usize>,
+}
 
 #[derive(Debug)]
 enum BuildProgram {
@@ -19,35 +33,25 @@ impl BuildProgram {
         }
     }
 
-    fn build_make_command<P: AsRef<Path>>(threads: Option<usize>, directory: Option<P>) -> Command {
+    fn build_make_command<P: AsRef<Path>>(threads: usize, directory: Option<P>) -> Command {
         let mut command = Command::new("make");
-        if let Some(thread_count) = threads {
-            command.arg("-j").arg(thread_count.to_string());
-        }
+        command.arg("-j").arg(threads.to_string());
         if let Some(dir) = directory {
             command.arg("-C").arg(dir.as_ref().as_os_str());
         }
         command
     }
 
-    fn build_ninja_command<P: AsRef<Path>>(
-        threads: Option<usize>,
-        directory: Option<P>,
-    ) -> Command {
+    fn build_ninja_command<P: AsRef<Path>>(threads: usize, directory: Option<P>) -> Command {
         let mut command = Command::new("ninja");
-        if let Some(thread_count) = threads {
-            command.arg("-j").arg(thread_count.to_string());
-        }
+        command.arg("-j").arg(threads.to_string());
         if let Some(dir) = directory {
             command.arg("-C").arg(dir.as_ref().as_os_str());
         }
         command
     }
 
-    fn build_cmake_command<P: AsRef<Path>>(
-        threads: Option<usize>,
-        directory: Option<P>,
-    ) -> Command {
+    fn build_cmake_command<P: AsRef<Path>>(threads: usize, directory: Option<P>) -> Command {
         let mut command = Command::new("cmake");
         command.arg("-C");
         if let Some(dir) = directory {
@@ -55,13 +59,11 @@ impl BuildProgram {
         } else {
             command.arg(".");
         }
-        if let Some(thread_count) = threads {
-            command.arg("-j").arg(thread_count.to_string());
-        }
+        command.arg("-j").arg(threads.to_string());
         command
     }
 
-    fn run<P: AsRef<Path>>(self, threads: Option<usize>, directory: Option<P>) {
+    fn run<P: AsRef<Path>>(self, threads: usize, directory: Option<P>) {
         let command = match self {
             BuildProgram::Make => BuildProgram::build_make_command(threads, directory),
             BuildProgram::Ninja => BuildProgram::build_ninja_command(threads, directory),
@@ -85,10 +87,16 @@ fn get_build_system<P: AsRef<Path>>(path: P) -> Result<Option<BuildProgram>> {
 }
 
 fn main() {
+    let args = Args::parse();
+
+    let threads = args
+        .threads
+        .unwrap_or(available_parallelism().unwrap().get());
+
     let cwd = current_dir().unwrap();
     let build_system_maybe = get_build_system(cwd).unwrap();
     if let Some(build_system) = build_system_maybe {
-        build_system.run::<&str>(None, None);
+        build_system.run::<&str>(threads, None);
     } else {
         println!("No build system found");
     }

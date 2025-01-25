@@ -3,8 +3,9 @@ name = "smartmake"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
-
 [[bin]]
 name = "sm"
 path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5.27", features = ["derive"] }
