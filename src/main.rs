@@ -14,7 +14,9 @@ use clap::Parser;
 #[derive(Parser)]
 #[command(version, about)]
 struct Args {
-    // The number of threads
+    /// Which build-system target to build
+    target: Option<String>,
+    /// The number of threads to build with
     #[arg(short, long)]
     threads: Option<usize>,
 }
@@ -36,17 +38,31 @@ impl BuildProgram {
         }
     }
 
-    fn build_make_command<P: AsRef<Path>>(threads: usize, directory: P) -> Command {
+    fn build_make_command<P: AsRef<Path>>(
+        threads: usize,
+        directory: P,
+        target: Option<&str>,
+    ) -> Command {
         let mut command = Command::new("make");
         command.arg("-j").arg(threads.to_string());
         command.arg("-C").arg(directory.as_ref().as_os_str());
+        if let Some(selected_target) = target {
+            command.arg(selected_target);
+        }
         command
     }
 
-    fn build_ninja_command<P: AsRef<Path>>(threads: usize, directory: P) -> Command {
+    fn build_ninja_command<P: AsRef<Path>>(
+        threads: usize,
+        directory: P,
+        target: Option<&str>,
+    ) -> Command {
         let mut command = Command::new("ninja");
         command.arg("-j").arg(threads.to_string());
         command.arg("-C").arg(directory.as_ref().as_os_str());
+        if let Some(selected_target) = target {
+            command.arg(selected_target);
+        }
         command
     }
 
@@ -56,10 +72,10 @@ impl BuildProgram {
         command
     }
 
-    fn run<P: AsRef<Path>>(self, threads: usize, directory: P) {
+    fn run<P: AsRef<Path>>(self, threads: usize, directory: P, target: Option<&str>) {
         let mut command = match self {
-            BuildProgram::Make => BuildProgram::build_make_command(threads, directory),
-            BuildProgram::Ninja => BuildProgram::build_ninja_command(threads, directory),
+            BuildProgram::Make => BuildProgram::build_make_command(threads, directory, target),
+            BuildProgram::Ninja => BuildProgram::build_ninja_command(threads, directory, target),
             BuildProgram::Cargo => BuildProgram::build_cargo_command(),
         };
         println!("{}", command.exec());
@@ -106,7 +122,7 @@ fn main() {
         .unwrap_or(available_parallelism().unwrap().get());
 
     if let Some((build_program, path)) = find_build_dir() {
-        build_program.run(threads, path);
+        build_program.run(threads, path, args.target.as_deref());
     } else {
         println!("No build system found");
     }
