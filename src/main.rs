@@ -2,6 +2,7 @@ use std::{
     env::current_dir,
     fs::{exists, read_dir},
     io::Result,
+    os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::Command,
     thread::available_parallelism,
@@ -23,7 +24,6 @@ enum BuildProgram {
     Make,
     Ninja,
     Cargo,
-    CMake,
 }
 
 impl BuildProgram {
@@ -32,7 +32,6 @@ impl BuildProgram {
             "makefile" | "Makefile" | "GNUmakefile" => Some(BuildProgram::Make),
             "build.ninja" => Some(BuildProgram::Ninja),
             "Cargo.toml" => Some(BuildProgram::Cargo),
-            "CMakeLists.txt" => Some(BuildProgram::CMake),
             _ => None,
         }
     }
@@ -51,22 +50,19 @@ impl BuildProgram {
         command
     }
 
-    fn build_cmake_command<P: AsRef<Path>>(threads: usize, directory: P) -> Command {
-        let mut command = Command::new("cmake");
-        command.arg("-C");
-        command.arg(directory.as_ref().as_os_str());
-        command.arg("-j").arg(threads.to_string());
+    fn build_cargo_command() -> Command {
+        let mut command = Command::new("cargo");
+        command.arg("build");
         command
     }
 
     fn run<P: AsRef<Path>>(self, threads: usize, directory: P) {
-        let command = match self {
+        let mut command = match self {
             BuildProgram::Make => BuildProgram::build_make_command(threads, directory),
             BuildProgram::Ninja => BuildProgram::build_ninja_command(threads, directory),
-            BuildProgram::CMake => BuildProgram::build_cmake_command(threads, directory),
-            BuildProgram::Cargo => Command::new("cargo build"),
+            BuildProgram::Cargo => BuildProgram::build_cargo_command(),
         };
-        println!("Command: {:?}", command);
+        println!("{}", command.exec());
     }
 }
 
